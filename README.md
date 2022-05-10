@@ -1,3 +1,3 @@
-# CG BlueTeamTools Internal
+# CG BlueTeamTools
 
-My blue team tools.
+My collection of Bule Team related tools.
