@@ -29,17 +29,29 @@ function Install-Sysmon() {
 
 	if (Test-Path $global:SysmonExe) {
 		Write-Host "Sysmon installer already downloaded."
+		[bool]$SysmonInstalled = $true
 	} else {
+		[bool]$SysmonInstalled = $false
+	}
+
+	if (!$SysmonInstalled) {
 		Write-Host "Downloading Sysmon installer..."
 		Invoke-WebRequest $SysmonUrl -OutFile $SysmonZipFile
 
-		# Extract the downloaded zip file to the temp directory.
-		Write-Host "Extracting Sysmon installer..."
-		Expand-Archive $SysmonZipFile -DestinationPath $env:temp
+		# Confirm the Sysmon zip was downloaded.
+		if (Test-Path $SysmonZipFile) {
+			Write-Host "Sysmon installer downloaded."
+			# Extract the downloaded zip file to the temp directory.
+			Write-Host "Extracting Sysmon installer..."
+			Expand-Archive $SysmonZipFile -DestinationPath $env:temp
 
-		# Delete the Sysmon installer ZIP file.
-		Write-Host "Deleting Sysmon installer..."
-		# Remove-Item $SysmonZipFile -Force -Recurse -ErrorAction SilentlyContinue
+			# Delete the Sysmon installer ZIP file.
+			Write-Host "Deleting Sysmon installer..."
+			Remove-Item $SysmonZipFile -Force -Recurse -ErrorAction SilentlyContinue
+		} else {
+			Write-Host "Sysmon installer failed to download."
+			exit 1
+		}
 	}
 	# Install the Sysmon DNS configuration.
 	Install-SysmonConfig
