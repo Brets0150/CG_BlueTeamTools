@@ -1,23 +1,23 @@
-# -Requires -RunAsAdministrator
+#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
 	Downlaod, install, and configure the latest version of the Sysmon for DNS logging.
 .DESCRIPTION
-	This script uses PowerShell the will automatically download, install, and configure the latest version of the Sysmon for DNS logging.
-	It will also monitor log files for DNS queries for a given domain name.
-	If the given Domain Name is found in the log files, the script will send an email to the specified email address.
+    This script uses PowerShell and will automatically download, install, and configure the latest version of the Sysmon for DNS logging.
+    After Sysmon is installed and running, the user can choose to monitor for a given domain name.
+    If they choose to monitor for a domain name, the script will drop into a loop that searches the DNS logs for the domain name within the last 2-hours of logs.
 .EXAMPLE
+	PS> Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
+	PS> Invoke-WebRequest https://github.com/Brets0150/CG_BlueTeamTools/blob/main/SysmonDnsLogging.ps1 -O .\SysmonDnsLogging.ps1
 	PS> ./SysmonDnsLogging.ps1
-
 .LINK
-	https://github.com/
+	https://github.com/Brets0150/CG_BlueTeamTools/blob/main/SysmonDnsLogging.ps1
 .NOTES
 	Author: Bret.s / License: MIT
 #>
 
 #====================================================================================================================
 # Global Variables
-[bool]$global:debug = $false
 [string]$global:SysmonProcessName = "Sysmon64"
 [string]$global:SysmonExeFileName = "Sysmon64.exe"
 [string]$global:SysmonConfig_Temp = $env:temp + "\config-dnsquery.xml"
