@@ -1,3 +1,4 @@
+# -Requires -RunAsAdministrator
 <#
 .SYNOPSIS
 	Downlaod, install, and configure the latest version of the Sysmon for DNS logging.
@@ -16,19 +17,17 @@
 
 #====================================================================================================================
 # Global Variables
-[bool]$global:debug = $true
+[bool]$global:debug = $false
+[string]$global:SysmonProcessName = "Sysmon64"
 [string]$global:SysmonExeFileName = "Sysmon64.exe"
 [string]$global:SysmonConfig_Temp = $env:temp + "\config-dnsquery.xml"
 [string]$global:SysmonExe_Temp = $env:temp + "\" + $global:SysmonExeFileName
-[string]$global:SysmonConfig = "C:\Windows\system32\" + "config-dnsquery.xml"
-[string]$global:SysmonExe = "C:\Windows\system32\" + $global:SysmonExeFileName
+[string]$global:SysmonConfig = "C:\Windows\" + "config-dnsquery.xml"
+[string]$global:SysmonExe = "C:\Windows\" + $global:SysmonExeFileName
 
 # Function to install the latest version of the Sysmon.
 function Install-Sysmon() {
 	Write-Host "Sysmon is not installed."
-
-	# Get the credentials for installing Sysmon.
-	Get-AdminCredentials
 
 	# Download the Sysmon installer
 	[string]$SysmonInstallerZip = "Sysmon.zip"
@@ -65,11 +64,7 @@ function Install-Sysmon() {
 
 	# Move the Sysmon64.exe to the Windows System32 directory.
 	Write-Host "Moving Sysmon64.exe to the Windows System32 directory..."
-	[string]$MoveCMD = "Move-Item -Path $global:SysmonExe_Temp -Destination $global:SysmonExe -Force"
-	Start-Process PowerShell.exe -Wait -Credential $global:ADCreds -ArgumentList "$MoveCMD"
-
-	# Start-BitsTransfer -Credential $global:ADCreds -Source $global:SysmonExe_Temp -Destination $global:SysmonExe
-	# Move-Item -Path $global:SysmonExe_Temp -Destination $global:SysmonExe -Force
+	Move-Item -Path $global:SysmonExe_Temp -Destination $global:SysmonExe -Force
 
 	#Confirm the Sysmon64.exe was moved successfully. If not exit with error.
 	if (!(Test-Path $global:SysmonExe)) {
@@ -78,11 +73,12 @@ function Install-Sysmon() {
 	}
 
 	# Install the Sysmon DNS configuration.
-	Install-SysmonConfig
+	Install-SysmonDnsConfig
 
 	# Install Sysmon
 	Write-Host "Installing Sysmon..."
-	Start-Process -Credential $global:ADCreds -Verb runAs -FilePath "$global:SysmonExe" -ArgumentList "-accepteula -i -c $global:SysmonConfig" -Wait -NoNewWindow
+	# cmd.exe "$global:SysmonExe -accepteula -i -c $global:SysmonConfig"
+	Start-Process -FilePath "$global:SysmonExe" -ArgumentList "-accepteula -i $global:SysmonConfig" -Wait -NoNewWindow
 
 	# Wait for Sysmon to install
 	Write-Host "Waiting for Sysmon to install..."
@@ -92,13 +88,13 @@ function Install-Sysmon() {
 }
 
 # Function to create the Sysmon configuration file.
-function Install-SysmonConfig() {
+function Install-SysmonDnsConfig() {
 	Write-Host "Creating Sysmon configuration file..."
 
 	# Check if the Sysmon configuration file exists.
 	if (Test-Path $global:SysmonConfig) {
 		Write-Host "Sysmon configuration file already exists."	# If it does, do nothing.
-		Break
+		return $true
 	}
 
 	# If it doesn't, create the file.
@@ -114,127 +110,137 @@ function Install-SysmonConfig() {
 	</Sysmon>' -Force
 
 	# Confirm that the file was created in temp. If not, exit the script with an error.
-	if (!(Test-Path $global:SysmonConfig_Temp)) {
+	if ( ! (Test-Path $global:SysmonConfig_Temp) ) {
 		Write-Host "Error creating Sysmon configuration file."
 		Exit 1
 	}
 
 	# Move the Sysmon configuration file to the Windows System32 directory.
 	Write-Host "Moving Sysmon configuration file to the Windows System32 directory..."
-	[string]$MoveCMD = "Move-Item -Path $global:SysmonConfig_Temp -Destination $global:SysmonConfig -Force"
-	Start-Process PowerShell.exe -Wait -Credential $global:ADCreds -ArgumentList "$MoveCMD"
-
-	# Start-BitsTransfer -Credential $global:ADCreds -Source $global:SysmonConfig_Temp -Destination $global:SysmonConfig
+	Move-Item -Path $global:SysmonConfig_Temp -Destination $global:SysmonConfig -Force
 
 	# Confirmed the Sysmon configuration file was moved successfully. If not exit with error.
-	if (!(Test-Path $global:SysmonConfig)) {
+	if ( ! (Test-Path $global:SysmonConfig) ) {
 		Write-Host "Error moving Sysmon configuration file to the Windows System32 directory."
 		Exit 1
 	}
 
 }
 
+# Function to check if Sysymon is installed and running, if it is not, install it. If it is installed and not running, start it.
+function Start-Sysmon() {
+	Write-Host "Checking if Sysmon is installed and running..."
 
-function Get-MyCredential {
-	[CmdletBinding()]
+	# Check if Sysmon is installed.
+	if (!(Test-Path $global:SysmonExe)) {
+		Write-Host "Sysmon is not installed."
+		Install-Sysmon
+	}
+
+	# Check if Sysmon is running.
+	if (!(Get-Process -Name "$global:SysmonProcessName" -ErrorAction SilentlyContinue)) {
+		Write-Host "Sysmon is not running."
+		Start-Process -FilePath "$global:SysmonExe" -ArgumentList "-accepteula -c $global:SysmonConfig" -Wait -NoNewWindow
+	}
+
+	# Confirm that Sysmon is running.
+	if (!(Get-Process -Name "$global:SysmonProcessName" -ErrorAction SilentlyContinue)) {
+		Write-Host "Sysmon failed to start."
+		Exit 1
+	}
+	Write-Host "Sysmon is running."
+}
+
+# A function that take a variable, asks the user if the variable is correct, if the user enters 'n', then return $false, if the user enters 'y', then return $true.
+# If the user enters anything other than 'y' or 'n', then ask them to enter 'y' or 'n'.
+function Confirm-ToProceed() {
+
+	# check if required varible is set.
 	param(
 		[Parameter(Mandatory=$true)]
-		[PSCredential]
+		[string]
 		[ValidateScript( {
-			$_ -ne [PSCredential]::Empty
+			$_ -ne [string]::Empty
 		})]
-		$Credential
+		$MessageToUser
 	)
-		Write-Host "Got credential with username '$($Credential.Username)'"
+
+	# Check if the user entered 'y' or 'n'. If not, ask them to enter 'y' or 'n'.
+	while (!($ConfirmToProceed.Character -eq 'y' -or $ConfirmToProceed.Character -eq 'n')) {
+
+		Write-Host -ForegroundColor Yellow "$MessageToUser"
+		Write-Host -ForegroundColor Yellow "Enter 'y' to proceed, 'n' to exit."
+
+		$ConfirmToProceed = $Host.UI.RawUI.ReadKey()
+		Switch ($ConfirmToProceed.Character) {
+			Y       { $true }
+			N       { $false }
+			default {}
+		}
+		Write-Host " "
+	}
 }
 
-# Function to ask the user for Admin credentials and save them to a global variable.
-function Get-AdminCredentials() {
+# Function that takes a $DomainName, then searches the EventLog for matching EventID with the DomainName in the message feild.
+Function Get-DNSQueryRecord() {
+	param(
+		[Parameter(Mandatory=$true)]
+		[ValidateScript( {
+			$_ -ne [string]::Empty
+		})]
+		$DomainName
+	)
 
-	# Loop until the user enters a valid Admin username and password.
-	if (!(Test-Administrator)){
-		Write-Host "You are not an administrator."
-		Write-Host "Enter the  Admin credentials."
+	# The number of hour back in time to look at.
+	[int]$HourBackToSearch = 2
 
-		# Count intiger to keep track of the number of attempts.
-		[int]$count = 0
-
-		# Whole loop to get the username and password till the user enters a valid username and password.
-		while ( $global:ADCreds -ne [System.Management.Automation.PSCredential]::Empty ) {
-
-			# Increment the count.
-			$count++
-
-			# If count is greater than 3, exit the script with an error.
-			if ($count -gt 3) {
-				Write-Host "You have entered an invalid username and password 3 times. Exiting the script."
-				Exit 1
-			}
-
-			# Ask the user for the username.
-			$global:ADCreds = (Get-Credential "$env:COMPUTERNAME\$env:username" -ErrorAction SilentlyContinue)
-		}
-
-		# Check is $global:ADCreds is not null or empty. If it is, exit with error.
-		if ( ( $global:ADCreds -ne [System.Management.Automation.PSCredential]::Empty ) -or ($count -gt 3) ) {
-			Write-Host "Error getting Admin credentials."
-			Exit 1
-		}
-
-		# Restart this script. with the new admin credentials. -Credential $global:ADCreds
-		Start-Process PowerShell.exe -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Credential ($global:ADCreds) -WorkingDirectory 'C:\Windows\System32' -NoNewWindow
-		Exit 0
+	# Search the event log.
+	try {
+		Write-Output "Searching for DNS queries for $DomainName..."
+		Get-WinEvent -FilterHashtable @{
+			Logname = 'Microsoft-Windows-Sysmon/Operational'
+			ID = 22
+			StartTime =  [datetime]::Today.AddHours(-$HourBackToSearch)
+			EndTime = [datetime]::Today
+		} | Select-Object -Property Message | Where-Object {$_ -like "*$DomainName*"} | Format-List
+	}
+	catch {
+		{Write-Host -ForegroundColor Red "No DNS queries found for $DomainName."}
 	}
 
 }
 
+# -----------------------------------------------------------------------------------#
 
+# Main function to start the script.
+Start-Sysmon
 
-# Fuction to test if the user is an administrator.
-function Test-Administrator() {
+# Ask the user if they want to proceed. If they ask them what domain name to monitor for.
+if (Confirm-ToProceed "Do you want to monitor for a specific domain name?") {
 
-	# Get the current user's identity.
-    $user = [Security.Principal.WindowsIdentity]::GetCurrent();
+	# Pre-state for the loop.
+	$Confirm = $false
 
-	# Check if the user is an administrator.
-    (New-Object Security.Principal.WindowsPrincipal $user).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
+	# Ask the user if they want to monitor DNS queries.
+	while ($Confirm -eq $false) {
 
-}
+		[string]$DomainName = Read-Host -Prompt 'Enter the FQDN that you are lookig for?'
 
-# Check is Sysmon is installed. If not, install it.
-if (Get-Item -Path $global:SysmonExe -ErrorAction SilentlyContinue) {
-	Write-Host "Sysmon is installed."
+		if ($DomainName -ne '' -or $null -ne $DomainName) {
+			$Confirm = Confirm-ToProceed -MessageToUser "Do you want to monitor DNS queries for `"$DomainName`"?"
+		}
 
-	# Set SysmonInstalled boolean to true.
-	[bool]$SysmonInstalled = $true
-
-	# Check if Sysmon is running. If not, start it.
-	if (!(Get-Process -Name Sysmon64)) {
-		Write-Host "Sysmon is not running."
-
-		# Set SysmonRunning boolean to false.
-		[bool]$SysmonRunning = $false
-
-		# Start Sysmon.
-		Start-Process -Verb runAs -FilePath $global:SysmonExe -ArgumentList "-accepteula -c $global:SysmonConfig"
-
-		# Wait for Sysmon to start.
-		Write-Host "Waiting for Sysmon to start..."
-		while (!(Get-Process -Name Sysmon64)) { Start-Sleep -s 1 }
-
-		Write-Host "Sysmon started."
-
-		# Set SysmonRunning boolean to true.
-		[bool]$SysmonRunning = $true
 	}
 
-} else {
-	Install-Sysmon
-}
+	# Infinat loop to Search the logs for the DNS events related to the given domain name.
+	while ($true) {
+		Clear-Host
+		Get-DNSQueryRecord $DomainName
+		Start-Sleep -Seconds 60
+	}
 
-# If $global:debug is true, print the variables.
-if ($global:debug) {
-	Get-Variable |%{ "Name : {0}`r`nValue: {1}`r`n" -f $_.Name,$_.Value }
+	# Get-DNSQueryRecord $DomainName
+
 }
 
 Exit 0
