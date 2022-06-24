@@ -11,7 +11,7 @@
 
 .EXAMPLE
 	PS> Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
-	PS> Invoke-WebRequest https://github.com/Brets0150/CG_BlueTeamTools/blob/main/Clean-InactiveComputers.ps1-O ./Clean-InactiveComputers.ps1
+	PS> Invoke-WebRequest https://raw.githubusercontent.com/Brets0150/CG_BlueTeamTools/main/Clean-InactiveComputers.ps1 ./Clean-InactiveComputers.ps1
 	PS> ./Clean-InactiveComputers.ps1
 
 .LINK
@@ -28,7 +28,7 @@ $InactiveDays = 90
 # $time variable converts $DaysInactive to LastLogonTimeStamp property format for the -Filter switch to work
 $InactiveDate = (Get-Date).Adddays(-($InactiveDays))
 
-# Eet the basic search path in AD. You can limit the search to a specific OU.
+# Set the basic search path in AD. You can limit the search to a specific OU.
 # Examples
 # $SearchOUbase = 'CN=Computers,DC=EXAMPLE,DC=COM'
 # $SearchOUbase = 'DC=EXAMPLE,DC=COM'

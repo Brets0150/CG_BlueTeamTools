@@ -28,9 +28,11 @@ Param (
     [Parameter(Mandatory=$false,Position=2)][ValidateSet("krbtgt-RotateKey")][string]$JobName
 )
 
-# The number of days between KRBTGT password updates.
-[int]$global:krbtgtPwUpdateInterval = 1
+# Get this files full path and name and put it in a variable.
 [string]$global:ThisScript = ([io.fileinfo]$MyInvocation.MyCommand.Definition).FullName
+
+# Parse the $global:ThisScript variable to get the directory path without the script name.
+[string]$global:ThisScriptDir = $global:ThisScript.Split("\\")[0..($global:ThisScript.Split("\\").Count - 2)] -join "\\"
 
 # Rename the terminal window, cuz it looks cool. =P
 $host.UI.RawUI.WindowTitle = "AD PowerAdmin - CyberGladius.com"
@@ -56,33 +58,26 @@ if (!(Test-Path -Path $global:ThisScript)) {
     Write-Host "Error: Could not determine the path to this script. Please ensure that the script is being run from a PowerShell prompt (i.e. not from a script or batch file)." -ForegroundColor Red
     exit 1
 }
+
+# Check if this script can reach the "AD-PowerAdmin_settings.ps1" file. If not, display an error message and end the script.
+if (!(Test-Path -Path "$global:ThisScriptDir\\AD-PowerAdmin_settings.ps1")) {
+    Write-Host "Error: Could not find the AD-PowerAdmin_setting.ps1 file. Please ensure that the script is being run from a PowerShell prompt (i.e. not from a script or batch file).
+    The AD-PowerAdmin_settings.ps1 file needs to be located in the same directory as the main AD-PowerAdmin.ps1 file." -ForegroundColor Red
+    exit 1
+}
+
+# Try to  Import the variables from the AD-PowerAdmin_settings.ps1 file.
+try {
+    Import-Module "$global:ThisScriptDir\\AD-PowerAdmin_settings.ps1"
+} catch {
+    Write-Host "Error: Could not import the variables from the AD-PowerAdmin_settings.ps1 file.
+    Please ensure that the script is being run from a PowerShell prompt (i.e. not from a script or batch file).
+    The AD-PowerAdmin_settings.ps1 file needs to be located in the same directory as the main AD-PowerAdmin.ps1 file." -ForegroundColor Red
+    exit 1
+}
+
 #=======================================================================================
 # Functions
-
-
-# Function to display the main menu options for AD-PowerAdmin
-function Show-Menu {
-    # Clear-Host
-
-    Write-Host '
-     ______      __                 ________          ___
-    / ____/_  __/ /_  ___  _____   / ____/ /___ _____/ (_)_  _______
-   / /   / / / / __ \/ _ \/ ___/  / / __/ / __ `/ __  / / / / / ___/
-  / /___/ /_/ / /_/ /  __/ /     / /_/ / / /_/ / /_/ / / /_/ (__  )
-  \____/\__, /_.___/\___/_/      \____/_/\__,_/\__,_/_/\__,_/____/
-       /____/   Presents
-    ___    ____        ____                          ___       __          _
-   /   |  / __ \      / __ \____ _      _____  _____/   | ____/ /___ ___  (_)___
-  / /| | / / / /_____/ /_/ / __ \ | /| / / _ \/ ___/ /| |/ __  / __ `__ \/ / __ \
- / ___ |/ /_/ /_____/ ____/ /_/ / |/ |/ /  __/ /  / ___ / /_/ / / / / / / / / / /
-/_/  |_/_____/     /_/    \____/|__/|__/\___/_/  /_/  |_\__,_/_/ /_/ /_/_/_/ /_/
-'
-    Write-Host "================ AD-PowerAdmin Tools ================"
-    Write-Host "1: Press '1' to get a Ad AD Admin account Audit Report."
-    Write-Host "2: Press '2' for this option."
-    Write-Host "3: Press '3' to Update the KRBTGT password."
-    Write-Host "Q: Press 'Q' to quit."
-}
 
 # Funcation to build a list of AD Users with Adinistrative Rights, including the Domain Admin and Enterprise Admins.
 Function Get-ADAdmins() {
@@ -358,87 +353,133 @@ Function Update-KRBTGTPassword {
     }
 }
 
-# Function to download and install PowerShell 7.0 and upgrade the current PowerShell version.
-Function Install-PS7 {
-    Write-Host "Installing PowerShell 7.2..."
-    # Dwonloaded File and Path.
-    [string]$PowerShell7Exe = "$env:temp\PS7.msi"
-    # Download the latest version of PowerShell 7.0.
-    $DownloadCheck = (Get-DownloadFile -URL "https://github.com/PowerShell/PowerShell/releases/download/v7.2.4/PowerShell-7.2.4-win-x64.msi" -OutFileName $PowerShell7Exe)
-    if ( $DownloadCheck -ne $False ) {
-
-        [string]$MsiInstaller = "C:\Windows\System32\msiexec.exe"
-        [string]$ArgumentList = "/package $PowerShell7Exe /quiet ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ADD_FILE_CONTEXT_MENU_RUNPOWERSHELL=1 ENABLE_PSREMOTING=1 REGISTER_MANIFEST=1 USE_MU=1 ENABLE_MU=1"
-
-        # Install the latest version of PowerShell 7.0.
-        Start-Process -FilePath $MsiInstaller -ArgumentList $ArgumentList -Wait -NoNewWindow
-
-        # If the installation was successful, then display a success message.
-        Write-Host "PowerShell 7.0 was successfully installed." -ForegroundColor Green
-    }
-}
-
 # Function to seartch AD for Computer Objects that have been inactive for more than X days.
+# Example: Search-InactiveComputers -SearchOUbase 'OU=Desktops,DC=EXAMPLE,DC=COM' -DisabledOULocal 'OU=Disabled.Desktop,OU=Desktops,DC=EXAMPLE,DC=COM' -InactiveDays 90
 Function Search-InactiveComputers {
     # Parameters for this function.
     Param(
         [Parameter(Mandatory=$true,Position=1)]
-        [string]$SearchOUbase
+        [string]$SearchOUbase,
         [Parameter(Mandatory=$true,Position=2)]
-        [string]$DisabledOULocal
+        [string]$DisabledOULocal,
         [Parameter(Mandatory=$true,Position=3)]
         [string]$InactiveDays
     )
 
-
-    # Specify inactivity range value below
-    $InactiveDays = 90
-
     # $time variable converts $DaysInactive to LastLogonTimeStamp property format for the -Filter switch to work
     $InactiveDate = (Get-Date).Adddays(-($InactiveDays))
-
-    # Eet the basic search path in AD. You can limit the search to a specific OU.
-    # Examples
-    # $SearchOUbase = 'CN=Computers,DC=EXAMPLE,DC=COM'
-    # $SearchOUbase = 'DC=EXAMPLE,DC=COM'
-    $SearchOUbase = 'OU=Desktops,DC=EXAMPLE,DC=COM'
-
-    # The disabled Computers OU location in AD.
-    $DisabledOULocal = 'OU=Disabled.Desktop,OU=Desktops,DC=EXAMPLE,DC=COM'
 
     # Search for Computers that have been inactive for more than X days.
     $InactiveComputerObjects = Get-ADComputer -SearchBase $SearchOUbase -Filter {LastLogonTimeStamp -lt $InactiveDate -and Enabled -eq $true} `
     -ResultPageSize 2000 -resultSetSize $null -Properties Name, OperatingSystem, SamAccountName, DistinguishedName, LastLogonDate
 
-    #For each inactive computer, Disable the Computer AD object, update the discription, and move the computer to the Disabled.Desktop OU.
-    $InactiveComputerObjects | ForEach-Object {
-        # Current Computer Object.
-        $CurrentComputerObject = $_
-        # Get the old(currently) set computer discription.
-        $ComputerOldDescription = (Get-ADComputer -Identity $CurrentComputerObject -Prop Description).Description
+    # Check if $InactiveComputerObjects is empty. If it is, then no computers are inactive.
+    if ($null -ne $InactiveComputerObjects) {
 
-        #Get the old OU location of the computer.
-        $ComputerOldOU = $CurrentComputerObject.DistinguishedName
+        #For each inactive computer, Disable the Computer AD object, update the discription, and move the computer to the Disabled.Desktop OU.
+        $InactiveComputerObjects | ForEach-Object {
+            # Current Computer Object.
+            $CurrentComputerObject = $_
+            # Get the old(currently) set computer discription.
+            $ComputerOldDescription = (Get-ADComputer -Identity $CurrentComputerObject -Prop Description).Description
 
-        # Get all groups the computer is a member of. Foreach group, remove the computer from the group.
-        $ComputersGroupMemberships = Get-ADPrincipalGroupMembership $CurrentComputerObject.DistinguishedName
-        $ComputersGroupMemberships | ForEach-Object {
-            # If $_.DistinguishedName not equal to "Domain Computers", then remove the computer from the group.
-            if ($_.DistinguishedName -ne 'Domain Computers') {
-                Remove-ADPrincipalGroupMembership -Identity $CurrentComputerObject -MemberOf $_.DistinguishedName
+            #Get the old OU location of the computer.
+            $ComputerOldOU = $CurrentComputerObject.DistinguishedName
+
+            # Get all groups the computer is a member of.
+            $ComputersGroupMemberships = Get-ADPrincipalGroupMembership $CurrentComputerObject.DistinguishedName
+
+            # Foreach group, remove the computer from the group.
+            $ComputersGroupMemberships | ForEach-Object {
+                # If $_.DistinguishedName not equal to "Domain Computers", then remove the computer from the group.
+                if ($_.name -ne 'Domain Computers') {
+                    Remove-ADPrincipalGroupMembership -Identity $CurrentComputerObject -MemberOf $_.DistinguishedName -Confirm:$False
+                }
             }
-        }
 
-        # Disable the computer in AD.
-        Disable-ADAccount $CurrentComputerObject
-        # Update the computer description.
-        Set-ADComputer $CurrentComputerObject -Description "$ComputerOldDescription -- Account disabled $(Get-Date -format "yyyy-MM-dd") by AD-PowerAdmin. OLD-OU: $ComputerOldOU"
-        # Move the computer to the Disabled.Desktop OU.
-        Move-ADObject $CurrentComputerObject -targetpath $DisabledOULocal
-        # Write the computer name to the log file.
-        Write-Output $CurrentComputerObject.DistinguishedName
+            # Disable the computer in AD.
+            Disable-ADAccount $CurrentComputerObject
+
+            # Update the computer description.
+            Set-ADComputer $CurrentComputerObject -Description "$ComputerOldDescription -- Account disabled $(Get-Date -format "yyyy-MM-dd") by AD-PowerAdmin. :: OLD-OU: $ComputerOldOU"
+
+            # Move the computer to the Disabled.Desktop OU.
+            Move-ADObject $CurrentComputerObject -targetpath $DisabledOULocal
+        }
     }
 
+}
+
+# Function to search for inactive User accounts in AD.
+# Example: Search-InactiveUsers -SearchOUbase 'OU=Users,DC=EXAMPLE,DC=COM' -DisabledOULocal 'OU=Disabled.Users,OU=Users,DC=EXAMPLE,DC=COM' -InactiveDays 90
+Function Search-DisableInactiveUsers {
+    # Parameters for this function.
+    Param(
+        [Parameter(Mandatory=$true,Position=1)]
+        [string]$SearchOUbase,
+        [Parameter(Mandatory=$true,Position=2)]
+        [string]$DisabledOULocal,
+        [Parameter(Mandatory=$true,Position=3)]
+        [string]$InactiveDays
+    )
+
+    # $time variable converts $DaysInactive to LastLogonTimeStamp property format for the -Filter switch to work
+    $InactiveDate = (Get-Date).Adddays(-($InactiveDays))
+
+    # Search for Users that have been inactive for more than X days.
+    $InactiveUserObjects = Get-ADUser -SearchBase $SearchOUbase -Filter {LastLogonTimeStamp -lt $InactiveDate -and Enabled -eq $true} `
+    -ResultPageSize 2000 -resultSetSize $null -Properties Name, SamAccountName, DistinguishedName, LastLogonDate
+
+    # Check if $InactiveUserObjects is empty. If it is, then no users are inactive.
+    if ($null -ne $InactiveUserObjects) {
+
+        # For each inactive user, Disable the User AD object, update the discription, and move the user to the Disabled.Users OU.
+        $InactiveUserObjects | ForEach-Object {
+            # Current User Object.
+            $CurrentUserObject = $_
+            # Get the old(currently) set user discription.
+            $UserOldDescription = (Get-ADUser -Identity $CurrentUserObject -Prop Description).Description
+            # Get the old OU location of the user.
+            $UserOldOU = $CurrentUserObject.DistinguishedName
+            # Get all groups the user is a member of.
+            $UsersGroupMemberships = Get-ADPrincipalGroupMembership $CurrentUserObject.DistinguishedName
+            # Foreach group, remove the user from the group.
+            $UsersGroupMemberships | ForEach-Object {
+                # If $_.DistinguishedName not equal to "Domain Users", then remove the user from the group.
+                if ($_.name -ne 'Domain Users') {
+                    Remove-ADPrincipalGroupMembership -Identity $CurrentUserObject -MemberOf $_.DistinguishedName -Confirm:$False
+                }
+            }
+        }
+    }
+}
+
+# function to only search for inactive User accounts and display there SamName and last login date.
+# Example: Search-InactiveUsers -InactiveDays 90 -DisplayOnly
+Function Search-InactiveUsers {
+    # Parameters for this function.
+    Param(
+        [Parameter(Mandatory=$true,Position=1)]
+        [string]$InactiveDays
+    )
+    # $time variable converts $DaysInactive to LastLogonTimeStamp property format for the -Filter switch to work
+    $InactiveDate = (Get-Date).Adddays(-($InactiveDays))
+    # Search for Users that have been inactive for more than X days.
+    $InactiveUserObjects = Get-ADUser -Filter {LastLogonTimeStamp -lt $InactiveDate -and Enabled -eq $true} `
+    -ResultPageSize 2000 -resultSetSize $null -Properties Name, SamAccountName, DistinguishedName, LastLogonDate
+    # Check if $InactiveUserObjects is empty. If it is, then no users are inactive.
+    if ($null -ne $InactiveUserObjects) {
+        # If $DisplayOnly is true, then display the SamName and last login date of the inactive users.
+        if ($DisplayOnly -eq $true) {
+            # For each inactive user, display the SamName and last login date.
+            $InactiveUserObjects | ForEach-Object {
+                # Current User Object.
+                $CurrentUserObject = $_
+                # Display the SamName and last login date.
+                Write-Host "SamName: $CurrentUserObject.SamAccountName -- Last Login: $CurrentUserObject.LastLogonDate"
+            }
+        }
+    }
 }
 
 # Function that runs a collection of function that nned to be performed daily on Active Directory.
@@ -446,7 +487,75 @@ function Start-DailyADTasks {
     # Run the function to update the KRBTGT password.
     Update-KRBTGTPassword -OverridePwd $false
     # Run the function to search for inactive computers.
-    Search-InactiveComputers
+    Search-InactiveComputers -SearchOUbase $global:SearchOUbase -DisabledOULocal $global:DisabledOULocal -InactiveDays $global:InactiveDays
+
+}
+
+# Function that will output this scripts logo.
+function Show-Logo {
+    Write-Host '
+    ______      __                 ________          ___
+   / ____/_  __/ /_  ___  _____   / ____/ /___ _____/ (_)_  _______
+  / /   / / / / __ \/ _ \/ ___/  / / __/ / __ `/ __  / / / / / ___/
+ / /___/ /_/ / /_/ /  __/ /     / /_/ / / /_/ / /_/ / / /_/ (__  )
+ \____/\__, /_.___/\___/_/      \____/_/\__,_/\__,_/_/\__,_/____/
+      /____/   Presents
+    ___    ____        ____                          ___       __          _
+   /   |  / __ \      / __ \____ _      _____  _____/   | ____/ /___ ___  (_)___
+  / /| | / / / /_____/ /_/ / __ \ | /| / / _ \/ ___/ /| |/ __  / __ `__ \/ / __ \
+ / ___ |/ /_/ /_____/ ____/ /_/ / |/ |/ /  __/ /  / ___ / /_/ / / / / / / / / / /
+/_/  |_/_____/     /_/    \____/|__/|__/\___/_/  /_/  |_\__,_/_/ /_/ /_/_/_/ /_/
+'
+}
+
+# Function to display the main menu options for AD-PowerAdmin
+function Show-Menu {
+    Clear-Host
+    Show-Logo
+    Write-Host "================ AD-PowerAdmin Tools ================"
+    Write-Host "1: Press '1' Audit AD Admin account Report."
+    Write-Host "2: Press '2' Run a security audit."
+    Write-Host "3: Press '3' Force KRBTGT password Update."
+    Write-Host "4: Press '4' Search for inactive computers and disable them."
+    Write-Host "5: Press '5' Search for inactive users accounts."
+    Write-Host "D: Press 'D' Run all daily tasks."
+    Write-Host "I: Press 'I' To install this script as a scheduled task to run the daily test, checks, and clean-up."
+    Write-Host "H: Press 'H' To show the help menu."
+    Write-Host "Q: Press 'Q' to quit."
+}
+
+# Function Help Menu
+function Show-Help {
+    Clear-Host
+    Show-Logo
+    Write-Host "
+    =========== AD-PowerAdmin General Notes =============
+    AD-PowerAdmin is a collection of scripts to make Active Directory more secure. There are two main ways to use this script;
+    A one-time run and audit OR, a scheduled task to automate tests and clean-ups.
+
+    ================ AD-PowerAdmin Tools ================
+
+    === Audit AD Admin account Report. ===
+        This option will generate a report of all accounts with Domain Administrator rights or Enterprise Administrator rights.
+
+    === Force KRBTGT password Update. ===
+        This option will update the KRBTGT password for all domain controllers.
+        During normal operation, the KRBTGT password needs to be updated every 90 days, twice.
+        Every 90 days, update the KRBTGT password, wait 10 hours, then update it again.
+        Alternativly, use this scripts '-Daliy' option to automate this process.
+
+        See my blog post for more details: https://cybergladius.com/ad-hardening-against-kerberos-golden-ticket-attack/
+
+    === Search for inactive computers. ===
+        Search for computers that have been inactive for more than X days; default is 90 days. This will disable the computer, strip all group membership, and
+        move it to the Disabled.Desktop OU. This can be run manually or automated via the '-Daliy' option.
+
+        See my blog post for more details: https://cybergladius.com/ad-hardening-inactive-computer-objects/
+
+        !!NOTE!!: You must update the settings in 'AD-PowerAdmin_settings.ps1' to matches your AD setup.
+
+    =====================================================
+    "
 }
 
 #=======================================================================================
@@ -493,16 +602,23 @@ do {
         Update-KRBTGTPassword -OverridePwd $false
     }
 
+    '4' {
+        # Run the function to search for inactive computers.
+        Search-InactiveComputers -SearchOUbase $global:SearchOUbase -DisabledOULocal $global:DisabledOULocal -InactiveDays $global:InactiveDays
+    }
+
     't' {
          Write-Host $global:ThisScript
         # New-ScheduledTask -ActionString "Taskmgr.exe" -ScheduleRunTime "09:00" -Recurring Once -TaskName "Test" -TaskDiscription "Just a Test"
     }
 
-    'psu' {
-        Install-PS7
+    'h' {
+        Show-Help
     }
 
     }
     pause
 } until ($Selection -eq 'q')
-# Exit 0
+
+# End of script.
+Exit 0
