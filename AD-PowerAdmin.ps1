@@ -89,6 +89,9 @@ Function Get-ADAdmins() {
     # Append $ADAdmins with members of the Enterprise Admins
     $ADAdmins += Get-ADGroupMember -Identity "Enterprise Admins" -Recursive
 
+    # Append $ADAdmins with members of the Builtin Administrators group
+    $ADAdmins += Get-ADGroupMember -Identity "Administrators" -Recursive
+
     # Remove duplicates from $ADAdmins
     $ADAdmins = $ADAdmins | Select-Object -Unique
 
