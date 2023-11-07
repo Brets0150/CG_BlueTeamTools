@@ -2,7 +2,7 @@
 
 My collection of Bule Team related tools.
 
-graph TD;
+```graph TD;
 
 A[Initialize Pwn2Crack] -->|Initialize variables| B[Check if hcxtools is available]
 
@@ -48,4 +48,4 @@ T --> V[Log error]
 
 X --> V[Log error]
 
-E --> V[Log error]
+E --> V[Log error]```
