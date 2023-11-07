@@ -2,7 +2,8 @@
 
 My collection of Bule Team related tools.
 
-```graph TD;
+```mermaid
+graph TD;
 
 A[Initialize Pwn2Crack] -->|Initialize variables| B[Check if hcxtools is available]
 
