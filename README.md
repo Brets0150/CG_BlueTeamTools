@@ -13,7 +13,7 @@ D -->|On handshake capture| F[Check if plugin is running];
 E --> V[Log error];
 F -->|No| X[End];
 F -->|Yes| G[Set hash output filename];
-G -->|Check if hashes are uploaded ESSID_First6ofAPBSSID.22000.uploaded| H[If uploaded, skip];
+G -->|Check if hashes are uploaded,ESSID_First6ofAPBSSID.22000.uploaded| H[If uploaded, skip];
 G -->|If not uploaded| I[Confirm pcap is valid handshake];
 I -->|No| K[Delete pcap file];
 I -->|Yes| J[Convert pcap to hashcat 22000 hash];
